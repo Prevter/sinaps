@@ -35,17 +35,10 @@ namespace sinaps::utils {
             return data[index];
         }
 
-        template <size_t I>
-        constexpr auto tupleImpl() const {
-            if constexpr (I == N - 1) {
-                return std::tuple{};
-            } else {
-                return std::tuple_cat(std::tuple{static_cast<uint8_t>(data[I])}, tupleImpl<I + 1>());
-            }
-        }
-
-        constexpr auto tuple() const {
-            return tupleImpl<0>();
+        [[nodiscard]] constexpr auto tuple() const {
+            return [this]<size_t... I>(std::index_sequence<I...>) {
+                return std::tuple{static_cast<uint8_t>(data[I])...};
+            }(std::make_index_sequence<N - 1>());
         }
 
         static constexpr size_t size() { return N - 1; }

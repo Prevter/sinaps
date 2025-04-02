@@ -38,17 +38,10 @@ namespace sinaps::utils {
             return data[index];
         }
 
-        template <size_t I>
-        constexpr auto tupleImpl() const {
-            if constexpr (I == N - 1) {
-                return std::tuple{};
-            } else {
-                return std::tuple_cat(std::tuple{static_cast<uint8_t>(data[I])}, tupleImpl<I + 1>());
-            }
-        }
-
-        constexpr auto tuple() const {
-            return tupleImpl<0>();
+        [[nodiscard]] constexpr auto tuple() const {
+            return [this]<size_t... I>(std::index_sequence<I...>) {
+                return std::tuple{static_cast<uint8_t>(data[I])...};
+            }(std::make_index_sequence<N - 1>());
         }
 
         static constexpr size_t size() { return N - 1; }
@@ -299,6 +292,47 @@ namespace sinaps {
 
         #undef EXTRACT_VALUES
 
+        // count number of groups of consecutive tokens (e.g. "AB?^C" has 2 groups)
+        static constexpr size_t group_count = []<size_t... I>(std::index_sequence<I...>) {
+            size_t count = 0;
+            bool in_group = false;
+            ((std::get<I>(types) == token_t::type_t::byte
+                  ? (void) (in_group = true)
+                  : in_group
+                        ? (void) (in_group = false, count++)
+                        : void()), ...);
+            if (in_group) count++;
+            return count;
+        }(std::make_index_sequence<size>());
+
+        struct group_t {
+            size_t offset{};
+            size_t count{};
+            constexpr group_t() = default;
+            constexpr group_t(size_t offset, size_t count) : offset(offset), count(count) {}
+            [[nodiscard]] constexpr size_t size() const { return count; }
+            constexpr uint8_t* begin(uint8_t* data) const { return data + offset; }
+            constexpr uint8_t* end(uint8_t* data) const { return data + offset + count; }
+        };
+
+        // array of groups
+        static constexpr std::array<group_t, group_count> groups = []<size_t... I>(std::index_sequence<I...>) {
+            std::array<group_t, group_count> groups;
+            size_t index = 0;
+            size_t begin = 0;
+            size_t count = 0;
+            bool in_group = false;
+            ((std::get<I>(types) == token_t::type_t::byte
+                  ? in_group
+                        ? void(count++)
+                        : (void) (in_group = true, count = 1, begin = I)
+                  : in_group
+                        ? (void) (in_group = false, groups[index++] = group_t{begin, count})
+                        : void()), ...);
+            if (in_group) groups[index] = group_t{begin, count};
+            return groups;
+        }(std::make_index_sequence<size>());
+
         static consteval size_t count_string_length() {
             size_t length = 0;
             for (size_t i = 0; i < raw_size; i++) {
@@ -476,8 +510,8 @@ namespace sinaps {
 #endif // SINAPS_PATTERN_HPP
 
 #include <array>
-#include <tuple>
-#include <variant>
+#include <cstdint>
+#include <cstring>
 
 
 namespace sinaps {
@@ -494,12 +528,36 @@ namespace sinaps {
 
         for (size_t i = 0; i < size - pat::size; i++) {
             bool found = true;
-            for (size_t j = 0; j < pat::size; j++) {
-                if (pat::types[j] == token_t::type_t::byte && data[i + j] != pat::bytes[j]) {
-                    found = false;
-                    break;
+
+            // check for groups
+            for (auto& group : pat::groups) {
+                if (std::is_constant_evaluated()) {
+                    // memcmp is not allowed in consteval
+                    for (size_t j = 0; j < group.count; j++) {
+                        if (data[i + j + group.offset] != pat::bytes[j + group.offset]) {
+                            found = false;
+                            break;
+                        }
+                    }
+                } else {
+                    if (std::memcmp(data + i + group.offset, &pat::bytes + group.offset, group.count) != 0) {
+                        found = false;
+                        break;
+                    }
                 }
             }
+
+            if (found) {
+                // check for masked bytes
+                for (size_t j = 0; j < pat::size; j++) {
+                    if (pat::types[j] == token_t::type_t::masked && (data[i + j] & pat::masks[j]) != pat::bytes[j]) {
+                        found = false;
+                        break;
+                    }
+                }
+            }
+
+            // check if we found the pattern
             if (found) {
                 return i + pat::cursor_pos;
             }
@@ -549,9 +607,21 @@ namespace sinaps {
         for (size_t i = 0; i < size - pattern_size; i++) {
             bool found = true;
             for (size_t j = 0; j < pattern_size; j++) {
-                if (pattern[j].type == token_t::type_t::byte && data[i + j] != pattern[j].byte) {
-                    found = false;
-                    break;
+                switch (pattern[j].type) {
+                    case token_t::type_t::byte:
+                        if (data[i + j] != pattern[j].byte) {
+                            found = false;
+                            break;
+                        }
+                        break;
+                    case token_t::type_t::masked:
+                        if ((data[i + j] & pattern[j].mask) != pattern[j].byte) {
+                            found = false;
+                            break;
+                        }
+                        break;
+                    default:
+                        break;
                 }
             }
             if (found) {

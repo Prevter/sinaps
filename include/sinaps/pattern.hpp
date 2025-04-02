@@ -77,6 +77,47 @@ namespace sinaps {
 
         #undef EXTRACT_VALUES
 
+        // count number of groups of consecutive tokens (e.g. "AB?^C" has 2 groups)
+        static constexpr size_t group_count = []<size_t... I>(std::index_sequence<I...>) {
+            size_t count = 0;
+            bool in_group = false;
+            ((std::get<I>(types) == token_t::type_t::byte
+                  ? (void) (in_group = true)
+                  : in_group
+                        ? (void) (in_group = false, count++)
+                        : void()), ...);
+            if (in_group) count++;
+            return count;
+        }(std::make_index_sequence<size>());
+
+        struct group_t {
+            size_t offset{};
+            size_t count{};
+            constexpr group_t() = default;
+            constexpr group_t(size_t offset, size_t count) : offset(offset), count(count) {}
+            [[nodiscard]] constexpr size_t size() const { return count; }
+            constexpr uint8_t* begin(uint8_t* data) const { return data + offset; }
+            constexpr uint8_t* end(uint8_t* data) const { return data + offset + count; }
+        };
+
+        // array of groups
+        static constexpr std::array<group_t, group_count> groups = []<size_t... I>(std::index_sequence<I...>) {
+            std::array<group_t, group_count> groups;
+            size_t index = 0;
+            size_t begin = 0;
+            size_t count = 0;
+            bool in_group = false;
+            ((std::get<I>(types) == token_t::type_t::byte
+                  ? in_group
+                        ? void(count++)
+                        : (void) (in_group = true, count = 1, begin = I)
+                  : in_group
+                        ? (void) (in_group = false, groups[index++] = group_t{begin, count})
+                        : void()), ...);
+            if (in_group) groups[index] = group_t{begin, count};
+            return groups;
+        }(std::make_index_sequence<size>());
+
         static consteval size_t count_string_length() {
             size_t length = 0;
             for (size_t i = 0; i < raw_size; i++) {

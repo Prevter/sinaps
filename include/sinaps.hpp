@@ -1,7 +1,7 @@
 #pragma once
 #include <array>
-#include <tuple>
-#include <variant>
+#include <cstdint>
+#include <cstring>
 
 #include "sinaps/masks.hpp"
 #include "sinaps/pattern.hpp"
@@ -20,12 +20,36 @@ namespace sinaps {
 
         for (size_t i = 0; i < size - pat::size; i++) {
             bool found = true;
-            for (size_t j = 0; j < pat::size; j++) {
-                if (pat::types[j] == token_t::type_t::byte && data[i + j] != pat::bytes[j]) {
-                    found = false;
-                    break;
+
+            // check for groups
+            for (auto& group : pat::groups) {
+                if (std::is_constant_evaluated()) {
+                    // memcmp is not allowed in consteval
+                    for (size_t j = 0; j < group.count; j++) {
+                        if (data[i + j + group.offset] != pat::bytes[j + group.offset]) {
+                            found = false;
+                            break;
+                        }
+                    }
+                } else {
+                    if (std::memcmp(data + i + group.offset, &pat::bytes + group.offset, group.count) != 0) {
+                        found = false;
+                        break;
+                    }
                 }
             }
+
+            if (found) {
+                // check for masked bytes
+                for (size_t j = 0; j < pat::size; j++) {
+                    if (pat::types[j] == token_t::type_t::masked && (data[i + j] & pat::masks[j]) != pat::bytes[j]) {
+                        found = false;
+                        break;
+                    }
+                }
+            }
+
+            // check if we found the pattern
             if (found) {
                 return i + pat::cursor_pos;
             }
@@ -75,9 +99,21 @@ namespace sinaps {
         for (size_t i = 0; i < size - pattern_size; i++) {
             bool found = true;
             for (size_t j = 0; j < pattern_size; j++) {
-                if (pattern[j].type == token_t::type_t::byte && data[i + j] != pattern[j].byte) {
-                    found = false;
-                    break;
+                switch (pattern[j].type) {
+                    case token_t::type_t::byte:
+                        if (data[i + j] != pattern[j].byte) {
+                            found = false;
+                            break;
+                        }
+                        break;
+                    case token_t::type_t::masked:
+                        if ((data[i + j] & pattern[j].mask) != pattern[j].byte) {
+                            found = false;
+                            break;
+                        }
+                        break;
+                    default:
+                        break;
                 }
             }
             if (found) {
