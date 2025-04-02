@@ -92,6 +92,14 @@ namespace sinaps::mask {
         static constexpr size_t size = 0;
         static constexpr std::tuple value = {token_t(token_t::type_t::cursor)};
     };
+
+    /// @brief A mask that matches a byte with a mask.
+    /// The mask is used to ignore certain bits in the byte.
+    template <uint8_t N, uint8_t M>
+    struct masked {
+        static constexpr size_t size = 1;
+        static constexpr std::tuple value = {token_t(N, M)};
+    };
 }
 
 #endif // SINAPS_MASKS_HPP

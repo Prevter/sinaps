@@ -48,9 +48,13 @@ namespace sinaps::utils {
         }
 
         static constexpr size_t size() { return N - 1; }
-        constexpr operator std::string_view() const { return std::string_view(data, N); }
+        constexpr operator std::string_view() const { return std::string_view(data, N - 1); }
         constexpr operator std::string() const { return std::string(data, N); }
     };
+
+    constexpr bool is_hex(char c) {
+        return (c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f');
+    }
 
     constexpr uint8_t from_hex(char c) {
         return c >= '0' && c <= '9' ? c - '0' : c >= 'A' && c <= 'F' ? c - 'A' + 10 : c - 'a' + 10;

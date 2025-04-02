@@ -3,9 +3,9 @@
 #define SINAPS_PATTERN_HPP
 
 #include <array>
-#include <tuple>
-#include <cstdint>
 #include <cstddef>
+#include <cstdint>
+#include <tuple>
 
 #include "token.hpp"
 #include "utils.hpp"
@@ -47,6 +47,11 @@ namespace sinaps {
             return std::array<uint8_t, raw_size>{std::get<I>(raw_value).byte...};
         }(std::make_index_sequence<raw_size>());
 
+        // array of raw masks (extracted from the raw_value tuple)
+        static constexpr auto raw_masks = []<size_t... I>(std::index_sequence<I...>) {
+            return std::array<uint8_t, raw_size>{std::get<I>(raw_value).mask...};
+        }(std::make_index_sequence<raw_size>());
+
         // array of tokens (excluding zero-sized ones)
         static constexpr auto value = []<size_t... I>(std::index_sequence<I...>) {
             std::array<token_t, size> value;
@@ -66,6 +71,8 @@ namespace sinaps {
         static constexpr auto types = EXTRACT_VALUES(token_t::type_t, type);
         // array of token bytes (excluding zero-sized ones)
         static constexpr auto bytes = EXTRACT_VALUES(uint8_t, byte);
+        // array of token masks (excluding zero-sized ones)
+        static constexpr auto masks = EXTRACT_VALUES(uint8_t, mask);
 
         #undef EXTRACT_VALUES
 
@@ -74,6 +81,8 @@ namespace sinaps {
             for (size_t i = 0; i < raw_size; i++) {
                 if (raw_types[i] == token_t::type_t::byte) {
                     length += 3;
+                } else if (raw_types[i] == token_t::type_t::masked) {
+                    length += 6;
                 } else {
                     length += 2;
                 }
@@ -82,13 +91,21 @@ namespace sinaps {
         }
 
         template <size_t N = count_string_length()>
-        static constexpr utils::FixedString<N + 1> to_string() {
+        static consteval utils::FixedString<N + 1> to_string() {
             utils::FixedString<N + 1> str;
             size_t index = 0;
             for (size_t i = 0; i < raw_size; i++) {
                 auto type = raw_types[i];
                 if (type == token_t::type_t::byte) {
-                    auto hex = hex_to_string(raw_bytes[i]);
+                    auto hex = utils::hex_to_string(raw_bytes[i]);
+                    str[index++] = hex[0];
+                    str[index++] = hex[1];
+                } else if (type == token_t::type_t::masked) {
+                    auto hex = utils::hex_to_string(raw_bytes[i]);
+                    str[index++] = hex[0];
+                    str[index++] = hex[1];
+                    str[index++] = '&';
+                    hex = utils::hex_to_string(raw_masks[i]);
                     str[index++] = hex[0];
                     str[index++] = hex[1];
                 } else if (type == token_t::type_t::wildcard) {
@@ -105,13 +122,19 @@ namespace sinaps {
 
     namespace impl {
         template <utils::FixedString S>
-        constexpr size_t sizeOfPatternString() {
+        consteval size_t sizeOfPatternString() {
             size_t size = 0;
             for (size_t i = 0; i < S.size(); i++) {
                 if (S[i] == ' ') {
                     continue;
                 }
                 size++;
+                if (utils::is_hex(S[i])) {
+                    i++;
+                }
+                if (i + 1 < S.size() && S[i + 1] == '&') {
+                    i += 3;
+                }
                 if (S[i] != '?' && S[i] != '^') {
                     i++;
                 }
@@ -120,22 +143,27 @@ namespace sinaps {
         }
 
         template <utils::FixedString S, size_t N = sizeOfPatternString<S>()>
-        constexpr std::array<token_t, N> tokenizePatternString() {
+        consteval std::array<token_t, N> tokenizePatternString() {
             std::array<token_t, N> tokens;
 
             size_t index = 0;
             for (size_t i = 0; i < S.size(); i++) {
-                if (S[i] == ' ') {
-                    continue;
-                }
-                if (S[i] == '?') {
-                    tokens[index++] = token_t();
-                } else if (S[i] == '^') {
-                    tokens[index++] = token_t(token_t::type_t::cursor);
-                } else {
-                    uint8_t byte = utils::from_hex(S[i]) << 4 | utils::from_hex(S[i + 1]);
-                    tokens[index++] = token_t(byte);
-                    i++;
+                switch (S[i]) {
+                    case ' ': continue;
+                    case '?': tokens[index++] = token_t(); break;
+                    case '^': tokens[index++] = token_t(token_t::type_t::cursor); break;
+                    default: {
+                        uint8_t byte = utils::from_hex(S[i]) << 4 | utils::from_hex(S[i + 1]);
+                        tokens[index++] = token_t(byte);
+                        i++;
+
+                        // check for masked byte
+                        if (i + 1 < S.size() && S[i + 1] == '&') {
+                            uint8_t mask = utils::from_hex(S[i + 2]) << 4 | utils::from_hex(S[i + 3]);
+                            tokens[index - 1] = token_t(byte, mask);
+                            i += 3;
+                        }
+                    } break;
                 }
             }
 
@@ -145,21 +173,21 @@ namespace sinaps {
         template <token_t Token>
         consteval auto unwrapToken() {
             if constexpr (Token.type == token_t::type_t::cursor) {
-                return std::tuple{mask::cursor{}};
+                return mask::cursor{};
             } else if constexpr (Token.type == token_t::type_t::byte) {
-                return std::tuple{mask::byte<Token.byte>{}};
+                return mask::byte<Token.byte>{};
+            } else if constexpr (Token.type == token_t::type_t::masked) {
+                return mask::masked<Token.byte, Token.mask>{};
             } else {
-                return std::tuple{mask::any{}};
+                return mask::any{};
             }
         }
 
-        template <size_t N, std::array<token_t, N> Tokens, size_t I = 0>
+        template <size_t N, std::array<token_t, N> Tokens>
         consteval auto unwrapTokens() {
-            if constexpr (I == N) {
-                return std::tuple{};
-            } else {
-                return std::tuple_cat(unwrapToken<Tokens[I]>(), unwrapTokens<N, Tokens, I + 1>());
-            }
+            return []<size_t... I>(std::index_sequence<I...>) {
+                return std::tuple{unwrapToken<Tokens[I]>()...};
+            }(std::make_index_sequence<N>());
         }
 
         /// @brief Get a pattern type from a list of tokens.
@@ -171,6 +199,45 @@ namespace sinaps {
         /// @brief Creates a pattern mask from a string literal.
         template <utils::FixedString S>
         using pattern = impl::make_pattern<impl::tokenizePatternString<S>()>;
+    }
+
+    inline std::string to_string(token_t token) {
+        switch (token.type) {
+            case token_t::type_t::byte: return fmt::format("{:02x}", token.byte);
+            case token_t::type_t::wildcard: return "?";
+            case token_t::type_t::cursor: return "^";
+            case token_t::type_t::masked: return fmt::format("{:02x}&{:02x}", token.byte, token.mask);
+            default: return "";
+        }
+    }
+
+    inline std::string to_string(std::span<const token_t> tokens) {
+        std::string str;
+        str.reserve(tokens.size() * 4);
+        for (const auto& token : tokens) {
+            switch (token.type) {
+                case token_t::type_t::byte:
+                    str += fmt::format("{:02x} ", token.byte);
+                    break;
+                case token_t::type_t::wildcard:
+                    str += "? ";
+                    break;
+                case token_t::type_t::cursor:
+                    str += "^ ";
+                    break;
+                case token_t::type_t::masked:
+                    str += fmt::format("{:02x}&{:02x} ", token.byte, token.mask);
+                    break;
+                default: break;
+            }
+        }
+
+        // remove trailing space
+        if (!str.empty()) {
+            str.pop_back();
+        }
+
+        return str;
     }
 }
 
