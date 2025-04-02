@@ -9,6 +9,7 @@ Simple signature scanner.
 - **Custom index cursor**: You can set the index cursor to any position in the pattern,
 allowing you to find a specific occurrence of the pattern. 
 - **Pattern builder**: You can build patterns using a simple and intuitive syntax.
+- **Masked bytes**: You can define which bits of the byte should be checked.
 
 ### Usage
 ```cpp

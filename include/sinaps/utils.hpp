@@ -3,6 +3,7 @@
 #define SINAPS_UTILS_HPP
 
 #include <algorithm>
+#include <cstdint>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -69,7 +70,7 @@ namespace sinaps::utils {
         }
     }
 
-    static consteval FixedString<2> hex_to_string(uint8_t byte) {
+    static constexpr FixedString<2> hex_to_string(uint8_t byte) {
         FixedString<2> str;
         constexpr char hex[] = "0123456789ABCDEF";
         str[0] = hex[byte >> 4];

@@ -5,6 +5,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <span>
 #include <tuple>
 
 #include "token.hpp"
@@ -203,10 +204,17 @@ namespace sinaps {
 
     inline std::string to_string(token_t token) {
         switch (token.type) {
-            case token_t::type_t::byte: return fmt::format("{:02x}", token.byte);
+            case token_t::type_t::byte: return utils::hex_to_string(token.byte);
             case token_t::type_t::wildcard: return "?";
             case token_t::type_t::cursor: return "^";
-            case token_t::type_t::masked: return fmt::format("{:02x}&{:02x}", token.byte, token.mask);
+            case token_t::type_t::masked: {
+                std::string str;
+                str.reserve(6);
+                str += utils::hex_to_string(token.byte);
+                str += '&';
+                str += utils::hex_to_string(token.mask);
+                return str;
+            } break;
             default: return "";
         }
     }
@@ -217,7 +225,7 @@ namespace sinaps {
         for (const auto& token : tokens) {
             switch (token.type) {
                 case token_t::type_t::byte:
-                    str += fmt::format("{:02x} ", token.byte);
+                    str += utils::hex_to_string(token.byte);
                     break;
                 case token_t::type_t::wildcard:
                     str += "? ";
@@ -226,7 +234,9 @@ namespace sinaps {
                     str += "^ ";
                     break;
                 case token_t::type_t::masked:
-                    str += fmt::format("{:02x}&{:02x} ", token.byte, token.mask);
+                    str += utils::hex_to_string(token.byte);
+                    str += '&';
+                    str += utils::hex_to_string(token.mask);
                     break;
                 default: break;
             }
