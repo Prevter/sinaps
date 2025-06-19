@@ -18,7 +18,7 @@ namespace sinaps {
     constexpr intptr_t find(const uint8_t* data, size_t size) {
         using pat = Pattern;
 
-        for (size_t i = 0; i < size - pat::size; i++) {
+        for (size_t i = 0; i <= size - pat::size; i++) {
             bool found = true;
 
             // check for groups
@@ -32,7 +32,10 @@ namespace sinaps {
                         }
                     }
                 } else {
-                    if (std::memcmp(data + i + group.offset, &pat::bytes + group.offset, group.count) != 0) {
+                    auto* data_ptr = data + i + group.offset;
+                    auto* pattern_ptr = pat::bytes.data() + group.offset;
+
+                    if (std::memcmp(data_ptr, pattern_ptr, group.count) != 0) {
                         found = false;
                         break;
                     }
