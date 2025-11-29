@@ -63,8 +63,8 @@ namespace sinaps::utils {
         }
     }
 
-    static constexpr FixedString<2> hex_to_string(uint8_t byte) {
-        FixedString<2> str;
+    static constexpr FixedString<3> hex_to_string(uint8_t byte) {
+        FixedString<3> str;
         constexpr char hex[] = "0123456789ABCDEF";
         str[0] = hex[byte >> 4];
         str[1] = hex[byte & 0xF];

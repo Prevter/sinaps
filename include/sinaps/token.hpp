@@ -2,6 +2,8 @@
 #ifndef SINAPS_TOKEN_HPP
 #define SINAPS_TOKEN_HPP
 
+#include <cstdint>
+
 namespace sinaps {
     struct token_t {
         enum class type_t : uint8_t {

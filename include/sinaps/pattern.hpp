@@ -225,16 +225,14 @@ namespace sinaps {
             }
         }
 
-        template <size_t N, std::array<token_t, N> Tokens>
-        consteval auto unwrapTokens() {
-            return []<size_t... I>(std::index_sequence<I...>) {
-                return std::tuple{unwrapToken<Tokens[I]>()...};
-            }(std::make_index_sequence<N>());
+        template <auto Tokens, size_t... I>
+        consteval auto unwrapTokens(std::index_sequence<I...>) {
+            return std::tuple{unwrapToken<Tokens[I]>()...};
         }
 
         /// @brief Get a pattern type from a list of tokens.
         template <std::array P>
-        using make_pattern = decltype(pattern{unwrapTokens<P.size(), P>()});
+        using make_pattern = decltype(pattern{unwrapTokens<P>(std::make_index_sequence<P.size()>())});
     }
 
     namespace mask {
@@ -267,6 +265,7 @@ namespace sinaps {
             switch (token.type) {
                 case token_t::type_t::byte:
                     str += utils::hex_to_string(token.byte);
+                    str += ' ';
                     break;
                 case token_t::type_t::wildcard:
                     str += "? ";
@@ -278,6 +277,7 @@ namespace sinaps {
                     str += utils::hex_to_string(token.byte);
                     str += '&';
                     str += utils::hex_to_string(token.mask);
+                    str += ' ';
                     break;
                 default: break;
             }
