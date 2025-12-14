@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <span>
 #include <tuple>
+#include <vector>
 
 #include "token.hpp"
 #include "utils.hpp"

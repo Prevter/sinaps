@@ -7,10 +7,10 @@
 #include "sinaps/pattern.hpp"
 
 #ifndef SINAPS_RESTRICT
-    #if defined(__GNUC__) || defined(__clang__)
-        #define SINAPS_RESTRICT __attribute__((restrict))
-    #elif defined(_MSC_VER)
+    #if defined(_MSC_VER) || defined(__clang__)
         #define SINAPS_RESTRICT __restrict
+    #elif defined(__GNUC__)
+        #define SINAPS_RESTRICT __attribute__((restrict))
     #else
         #define SINAPS_RESTRICT
     #endif

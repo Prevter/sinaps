@@ -226,6 +226,7 @@ namespace sinaps::mask {
 #include <cstdint>
 #include <span>
 #include <tuple>
+#include <vector>
 
 
 namespace sinaps {
@@ -429,6 +430,33 @@ namespace sinaps {
             return tokens;
         }
 
+        constexpr std::vector<token_t> tokenizePatternStringRuntime(std::string_view str) {
+            std::vector<token_t> tokens;
+            tokens.reserve(str.size() / 2);
+
+            for (size_t i = 0; i < str.size(); i++) {
+                switch (str[i]) {
+                    case ' ': continue;
+                    case '?': tokens.emplace_back(); break;
+                    case '^': tokens.emplace_back(token_t::type_t::cursor); break;
+                    default: {
+                        uint8_t byte = utils::from_hex(str[i]) << 4 | utils::from_hex(str[i + 1]);
+                        tokens.emplace_back(byte);
+                        i++;
+
+                        // check for masked byte
+                        if (i + 1 < str.size() && str[i + 1] == '&') {
+                            uint8_t mask = utils::from_hex(str[i + 2]) << 4 | utils::from_hex(str[i + 3]);
+                            tokens.back() = token_t(byte, mask);
+                            i += 3;
+                        }
+                    } break;
+                }
+            }
+
+            return tokens;
+        }
+
         template <token_t Token>
         consteval auto unwrapToken() {
             if constexpr (Token.type == token_t::type_t::cursor) {
@@ -475,10 +503,10 @@ namespace sinaps {
         }
     }
 
-    inline std::string to_string(std::span<const token_t> tokens) {
+    inline std::string to_string(std::span<token_t const> tokens) {
         std::string str;
         str.reserve(tokens.size() * 4);
-        for (const auto& token : tokens) {
+        for (auto const& token : tokens) {
             switch (token.type) {
                 case token_t::type_t::byte:
                     str += utils::hex_to_string(token.byte);
@@ -517,10 +545,10 @@ namespace sinaps {
 
 
 #ifndef SINAPS_RESTRICT
-    #if defined(__GNUC__) || defined(__clang__)
-        #define SINAPS_RESTRICT __attribute__((restrict))
-    #elif defined(_MSC_VER)
+    #if defined(_MSC_VER) || defined(__clang__)
         #define SINAPS_RESTRICT __restrict
+    #elif defined(__GNUC__)
+        #define SINAPS_RESTRICT __attribute__((restrict))
     #else
         #define SINAPS_RESTRICT
     #endif
@@ -678,7 +706,7 @@ namespace sinaps {
     /// @param pattern The pattern to search for.
     /// @param step_size The step size for the search (default is 1).
     /// @return The index of the pattern in the data buffer, or <b>sinaps::not_found</b> if not found.
-    constexpr intptr_t find(uint8_t const* data, size_t size, std::span<const token_t> pattern, size_t step_size = 1) {
+    constexpr intptr_t find(uint8_t const* data, size_t size, std::span<token_t const> pattern, size_t step_size = 1) {
         return find(data, size, pattern.data(), pattern.size(), step_size);
     }
 
@@ -690,6 +718,16 @@ namespace sinaps {
     /// @return The index of the pattern in the data buffer, or <b>sinaps::not_found</b> if not found.
     constexpr intptr_t find(uint8_t const* data, size_t size, std::initializer_list<token_t> pattern, size_t step_size = 1) {
         return find(data, size, pattern.begin(), pattern.size(), step_size);
+    }
+
+    /// @brief Find an index of a pattern in a data buffer. Pattern is a string.
+    /// @param data The data buffer to search in.
+    /// @param size The size of the data buffer.
+    /// @param pattern The pattern to search for.
+    /// @param step_size The step size for the search (default is 1).
+    /// @return The index of the pattern in the data buffer, or <b>sinaps::not_found</b> if not found.
+    constexpr intptr_t find(uint8_t const* data, size_t size, std::string_view pattern, size_t step_size = 1) {
+        return find(data, size, impl::tokenizePatternStringRuntime(pattern), step_size);
     }
 }
 
