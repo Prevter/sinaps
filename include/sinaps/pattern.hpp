@@ -212,6 +212,33 @@ namespace sinaps {
             return tokens;
         }
 
+        constexpr std::vector<token_t> tokenizePatternStringRuntime(std::string_view str) {
+            std::vector<token_t> tokens;
+            tokens.reserve(str.size() / 2);
+
+            for (size_t i = 0; i < str.size(); i++) {
+                switch (str[i]) {
+                    case ' ': continue;
+                    case '?': tokens.emplace_back(); break;
+                    case '^': tokens.emplace_back(token_t::type_t::cursor); break;
+                    default: {
+                        uint8_t byte = utils::from_hex(str[i]) << 4 | utils::from_hex(str[i + 1]);
+                        tokens.emplace_back(byte);
+                        i++;
+
+                        // check for masked byte
+                        if (i + 1 < str.size() && str[i + 1] == '&') {
+                            uint8_t mask = utils::from_hex(str[i + 2]) << 4 | utils::from_hex(str[i + 3]);
+                            tokens.back() = token_t(byte, mask);
+                            i += 3;
+                        }
+                    } break;
+                }
+            }
+
+            return tokens;
+        }
+
         template <token_t Token>
         consteval auto unwrapToken() {
             if constexpr (Token.type == token_t::type_t::cursor) {
@@ -258,10 +285,10 @@ namespace sinaps {
         }
     }
 
-    inline std::string to_string(std::span<const token_t> tokens) {
+    inline std::string to_string(std::span<token_t const> tokens) {
         std::string str;
         str.reserve(tokens.size() * 4);
-        for (const auto& token : tokens) {
+        for (auto const& token : tokens) {
             switch (token.type) {
                 case token_t::type_t::byte:
                     str += utils::hex_to_string(token.byte);

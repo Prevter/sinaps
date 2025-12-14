@@ -168,7 +168,7 @@ namespace sinaps {
     /// @param pattern The pattern to search for.
     /// @param step_size The step size for the search (default is 1).
     /// @return The index of the pattern in the data buffer, or <b>sinaps::not_found</b> if not found.
-    constexpr intptr_t find(uint8_t const* data, size_t size, std::span<const token_t> pattern, size_t step_size = 1) {
+    constexpr intptr_t find(uint8_t const* data, size_t size, std::span<token_t const> pattern, size_t step_size = 1) {
         return find(data, size, pattern.data(), pattern.size(), step_size);
     }
 
@@ -180,5 +180,15 @@ namespace sinaps {
     /// @return The index of the pattern in the data buffer, or <b>sinaps::not_found</b> if not found.
     constexpr intptr_t find(uint8_t const* data, size_t size, std::initializer_list<token_t> pattern, size_t step_size = 1) {
         return find(data, size, pattern.begin(), pattern.size(), step_size);
+    }
+
+    /// @brief Find an index of a pattern in a data buffer. Pattern is a string.
+    /// @param data The data buffer to search in.
+    /// @param size The size of the data buffer.
+    /// @param pattern The pattern to search for.
+    /// @param step_size The step size for the search (default is 1).
+    /// @return The index of the pattern in the data buffer, or <b>sinaps::not_found</b> if not found.
+    constexpr intptr_t find(uint8_t const* data, size_t size, std::string_view pattern, size_t step_size = 1) {
+        return find(data, size, impl::tokenizePatternStringRuntime(pattern), step_size);
     }
 }
